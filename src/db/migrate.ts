@@ -2,9 +2,10 @@ import { drizzle } from 'drizzle-orm/mysql2';
 import { migrate } from 'drizzle-orm/mysql2/migrator';
 import mysql from 'mysql2/promise';
 import 'dotenv/config';
+import { databaseConfig } from './connection.js';
 
 const connection = await mysql.createConnection({
-  uri: process.env.DATABASE_URL!,
+  ...databaseConfig(),
   multipleStatements: true,
 });
 
