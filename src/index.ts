@@ -22,7 +22,7 @@ import { AppError } from './lib/errors.js';
 import fastifyRateLimit from '@fastify/rate-limit';
 import fastifyMultipart from '@fastify/multipart';
 import fastifyStatic from '@fastify/static';
-import { createWriteStream } from 'fs';
+import { createWriteStream, mkdirSync } from 'fs';
 import { pipeline } from 'stream/promises';
 import { randomUUID } from 'crypto';
 import path from 'path';
@@ -30,6 +30,7 @@ import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const UPLOADS_DIR = path.join(__dirname, '..', 'uploads');
+mkdirSync(UPLOADS_DIR, { recursive: true });
 
 const app = Fastify({ logger: true });
 
