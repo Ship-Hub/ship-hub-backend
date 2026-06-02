@@ -27,7 +27,7 @@ const loginSchema = z.object({
 const MB_URL = process.env.MEMOBANK_URL ?? 'http://localhost:3000';
 const MB_CLIENT_ID = process.env.MEMOBANK_CLIENT_ID ?? 'shiphub';
 const MB_CLIENT_SECRET = process.env.MEMOBANK_CLIENT_SECRET ?? 'shiphub-oauth-secret-change-in-production';
-const MB_REDIRECT_URI = process.env.MEMOBANK_REDIRECT_URI ?? 'http://localhost:5174/auth/callback/memobank';
+const MB_REDIRECT_URI = process.env.SHIPHUB_REDIRECT_URI ?? process.env.MEMOBANK_REDIRECT_URI ?? 'http://localhost:5174/auth/callback/memobank';
 
 async function fetchMemoBankMe(apiKey: string) {
   const res = await fetch('https://api.memobank.online/v1/auth/me', {

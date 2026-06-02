@@ -32,7 +32,7 @@ const app = Fastify({ logger: true });
 
 // Plugins
 await app.register(fastifyCors, {
-  origin: process.env.FRONTEND_URL ?? 'http://localhost:5174',
+  origin: process.env.CORS_ORIGIN ?? process.env.FRONTEND_URL ?? 'http://localhost:5174',
   credentials: true,
 });
 
