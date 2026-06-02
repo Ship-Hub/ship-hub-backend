@@ -1,4 +1,4 @@
-import { mysqlTable, varchar, text, int, tinyint, timestamp, mysqlEnum } from 'drizzle-orm/mysql-core';
+import { mysqlTable, varchar, text, int, tinyint, timestamp, mysqlEnum, json } from 'drizzle-orm/mysql-core';
 
 export const users = mysqlTable('users', {
   id: varchar('id', { length: 36 }).primaryKey(),
@@ -19,6 +19,8 @@ export const users = mysqlTable('users', {
   emailVerifyToken: varchar('email_verify_token', { length: 64 }),
   resetToken: varchar('reset_token', { length: 64 }),
   resetTokenExpires: timestamp('reset_token_expires'),
+  banned: tinyint('banned').default(0),
+  pinnedMemoryIds: json('pinned_memory_ids').$type<string[]>().default([]),
   isAdmin: tinyint('is_admin').default(0),
   followerCount: int('follower_count').default(0),
   followingCount: int('following_count').default(0),

@@ -57,6 +57,13 @@
       "when": 1780425000000,
       "tag": "0007_backfill_auth_packs_notifications",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "5",
+      "when": 1780428600000,
+      "tag": "0008_admin_pins_editing_messages",
+      "breakpoints": true
     }
   ]
 }

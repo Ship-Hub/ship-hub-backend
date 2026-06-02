@@ -6,3 +6,4 @@ export * from './events.js';
 export * from './notifications.js';
 export * from './posts.js';
 export * from './packs.js';
+export * from './messages.js';

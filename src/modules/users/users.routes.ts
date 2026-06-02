@@ -98,6 +98,30 @@ export async function usersRoutes(app: FastifyInstance) {
     return reply.send({ users: rows });
   });
 
+  // Pin / unpin a memory on profile (up to 3)
+  app.post('/users/me/pin/:memoryId', { preHandler: [authenticate] }, async (req, reply) => {
+    const { id: userId } = req.user as { id: string };
+    const { memoryId } = req.params as { memoryId: string };
+
+    const [user] = await db.select().from(users).where(eq(users.id, userId));
+    if (!user) throw new AppError(404, 'NOT_FOUND', 'User not found');
+
+    const pinned: string[] = (user.pinnedMemoryIds as string[]) ?? [];
+
+    if (pinned.includes(memoryId)) {
+      // Unpin
+      const updated = pinned.filter(id => id !== memoryId);
+      await db.update(users).set({ pinnedMemoryIds: updated }).where(eq(users.id, userId));
+      return reply.send({ pinned: false, pinnedMemoryIds: updated });
+    }
+
+    if (pinned.length >= 3) throw new AppError(400, 'MAX_PINS', 'You can pin up to 3 memories');
+
+    const updated = [...pinned, memoryId];
+    await db.update(users).set({ pinnedMemoryIds: updated }).where(eq(users.id, userId));
+    return reply.send({ pinned: true, pinnedMemoryIds: updated });
+  });
+
   // Leaderboard — top builders by reputation score
   app.get('/leaderboard', async (req, reply) => {
     const { limit = 50 } = req.query as { limit?: number };

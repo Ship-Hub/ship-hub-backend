@@ -12,6 +12,7 @@ export const posts = mysqlTable('posts', {
   commentCount: int('comment_count').default(0),
   quotePostId: varchar('quote_post_id', { length: 36 }),
   quoteMemoryId: varchar('quote_memory_id', { length: 36 }),
+  editedAt: timestamp('edited_at'),
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow().onUpdateNow(),
 });

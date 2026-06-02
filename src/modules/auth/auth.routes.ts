@@ -39,7 +39,9 @@ async function fetchMemoBankMe(apiKey: string) {
 }
 
 export async function authRoutes(app: FastifyInstance) {
-  app.post('/auth/register', async (req, reply) => {
+  const authLimit = { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } };
+
+  app.post('/auth/register', { ...authLimit }, async (req, reply) => {
     const body = registerSchema.parse(req.body);
     const user = await authService.register(body);
 
@@ -52,7 +54,7 @@ export async function authRoutes(app: FastifyInstance) {
     return reply.status(201).send({ user: sanitizeUser(user), token });
   });
 
-  app.post('/auth/login', async (req, reply) => {
+  app.post('/auth/login', { ...authLimit }, async (req, reply) => {
     const body = loginSchema.parse(req.body);
     const user = await authService.login(body);
     const token = app.jwt.sign({ id: user.id, username: user.username });
@@ -246,7 +248,7 @@ export async function authRoutes(app: FastifyInstance) {
   });
 
   // ── Forgot password ───────────────────────────────────────────────────────
-  app.post('/auth/forgot-password', async (req, reply) => {
+  app.post('/auth/forgot-password', { ...authLimit }, async (req, reply) => {
     const { email } = z.object({ email: z.string().email() }).parse(req.body);
     const [user] = await db.select().from(users).where(eq(users.email, email));
 

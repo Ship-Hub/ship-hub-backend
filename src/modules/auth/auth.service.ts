@@ -32,12 +32,16 @@ export const authService = {
     const valid = await bcrypt.compare(data.password, user.passwordHash);
     if (!valid) throw new AppError(401, 'INVALID_CREDENTIALS', 'Invalid email or password');
 
+    if (user.banned) throw new AppError(403, 'BANNED', 'Your account has been suspended.');
+
     return user;
   },
 
   async getMe(id: string) {
     const user = await authRepository.findById(id);
     if (!user) throw new AppError(404, 'NOT_FOUND', 'User not found');
+    if (user.banned) throw new AppError(403, 'BANNED', 'Your account has been suspended.');
     return user;
   },
+
 };

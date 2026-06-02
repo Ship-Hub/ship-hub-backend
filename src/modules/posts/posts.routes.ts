@@ -100,6 +100,24 @@ export async function postsRoutes(app: FastifyInstance) {
     return reply.status(201).send(created);
   });
 
+  // Edit post (within 15 minutes)
+  app.patch('/posts/:id', { preHandler: [authenticate] }, async (req, reply) => {
+    const { id: userId } = req.user as { id: string };
+    const { id } = req.params as { id: string };
+    const { content } = z.object({ content: z.string().min(1).max(5000) }).parse(req.body);
+
+    const [post] = await db.select().from(posts).where(eq(posts.id, id));
+    if (!post) throw new AppError(404, 'NOT_FOUND', 'Post not found');
+    if (post.userId !== userId) throw new AppError(403, 'FORBIDDEN', 'Not your post');
+
+    const ageMs = Date.now() - new Date(post.createdAt!).getTime();
+    if (ageMs > 15 * 60 * 1000) throw new AppError(403, 'EDIT_WINDOW_EXPIRED', 'Posts can only be edited within 15 minutes of posting');
+
+    await db.update(posts).set({ content, editedAt: new Date() }).where(eq(posts.id, id));
+    const updated = await fetchPostWithQuote(id);
+    return reply.send(updated);
+  });
+
   // Delete post
   app.delete('/posts/:id', { preHandler: [authenticate] }, async (req, reply) => {
     const { id: userId } = req.user as { id: string };

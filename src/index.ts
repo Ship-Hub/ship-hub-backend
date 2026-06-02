@@ -16,7 +16,10 @@ import { searchRoutes } from './modules/search/search.routes.js';
 import { postsRoutes } from './modules/posts/posts.routes.js';
 import { feedRoutes } from './modules/feed/feed.routes.js';
 import { packsRoutes } from './modules/packs/packs.routes.js';
+import { messagesRoutes } from './modules/messages/messages.routes.js';
+import { adminRoutes } from './modules/admin/admin.routes.js';
 import { AppError } from './lib/errors.js';
+import fastifyRateLimit from '@fastify/rate-limit';
 import fastifyMultipart from '@fastify/multipart';
 import fastifyStatic from '@fastify/static';
 import { createWriteStream } from 'fs';
@@ -42,6 +45,17 @@ await app.register(fastifyJwt, {
 
 await app.register(fastifyCookie);
 
+// Rate limiting — global 200 req/min per IP
+await app.register(fastifyRateLimit, {
+  global: true,
+  max: 200,
+  timeWindow: '1 minute',
+  errorResponseBuilder: () => ({
+    error: 'RATE_LIMITED',
+    message: 'Too many requests — slow down.',
+  }),
+});
+
 // File uploads — 5MB max (enforced per-field in the upload route)
 await app.register(fastifyMultipart, { limits: { fileSize: 5 * 1024 * 1024 } });
 
@@ -64,6 +78,8 @@ await app.register(async (instance) => {
   await instance.register(postsRoutes);
   await instance.register(feedRoutes);
   await instance.register(packsRoutes);
+  await instance.register(messagesRoutes);
+  await instance.register(adminRoutes);
 }, { prefix });
 
 // Error handler
