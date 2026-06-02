@@ -11,9 +11,13 @@ async function send(to: string, subject: string, html: string) {
     return;
   }
   try {
-    await resend.emails.send({ from: FROM, to, subject, html });
+    const { data, error } = await resend.emails.send({ from: FROM, to, subject, html });
+    if (error) {
+      // Resend v2+ SDK returns { error } instead of throwing
+      console.error('[email] Send failed:', error);
+    }
   } catch (err) {
-    console.error('[email] Send failed:', err);
+    console.error('[email] Send exception:', err);
   }
 }
 
