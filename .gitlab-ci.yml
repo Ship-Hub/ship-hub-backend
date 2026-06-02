@@ -1,0 +1,52 @@
+image: node:22.17.0
+
+stages:
+  - build
+  - deploy
+
+variables:
+  API_DEPLOY_PATH: "/var/www/ship-hub/backend"
+  PM2_API_NAME: "shiphub-api"
+  DEPLOY_PORT: "22"
+
+build_api:
+  stage: build
+  rules:
+    - if: '$CI_COMMIT_BRANCH'
+  script:
+    - node --version
+    - npm --version
+    - npm ci
+    - npm run build
+
+deploy_api:
+  stage: deploy
+  needs:
+    - build_api
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+  before_script:
+    - apt-get update -y
+    - apt-get install -y openssh-client
+    - mkdir -p ~/.ssh
+    - chmod 700 ~/.ssh
+    - test -n "$DEPLOY_HOST"
+    - test -n "$DEPLOY_USER"
+    - test -n "$SSH_PRIVATE_KEY_B64"
+    - eval $(ssh-agent -s)
+    - printf '%s' "$SSH_PRIVATE_KEY_B64" | base64 -d > ~/.ssh/id_ed25519
+    - chmod 400 ~/.ssh/id_ed25519
+    - ssh-add ~/.ssh/id_ed25519
+    - ssh-keyscan -H "$DEPLOY_HOST" > ~/.ssh/known_hosts
+    - chmod 644 ~/.ssh/known_hosts
+    - export SSH_PORT="${DEPLOY_PORT:-22}"
+    - export SSH_TARGET="$DEPLOY_USER@$DEPLOY_HOST"
+    - export SSH_CMD="ssh -p $SSH_PORT -o ServerAliveInterval=15 -o ServerAliveCountMax=8 -o ConnectTimeout=30"
+  script:
+    - test -n "$API_DEPLOY_PATH"
+    - $SSH_CMD "$SSH_TARGET" "mkdir -p '$API_DEPLOY_PATH'"
+    - tar --exclude='.git' --exclude='node_modules' --exclude='dist' --exclude='.env' --exclude='*.log' --exclude='uploads' -czf - . | $SSH_CMD "$SSH_TARGET" "tar -xzf - -C '$API_DEPLOY_PATH'"
+    - $SSH_CMD "$SSH_TARGET" "find '$API_DEPLOY_PATH' -type d -exec chmod 755 {} + && find '$API_DEPLOY_PATH' -type f -exec chmod 644 {} + && chmod 600 '$API_DEPLOY_PATH/.env'"
+    - $SSH_CMD "$SSH_TARGET" "export PATH=/usr/local/bin:/usr/bin:/bin:$HOME/.nvm/versions/node/v22.17.0/bin:$PATH; if [ -s $HOME/.nvm/nvm.sh ]; then . $HOME/.nvm/nvm.sh; fi; cd '$API_DEPLOY_PATH' && test -f .env && node --version && npm --version && (command -v pm2 >/dev/null || npm install -g pm2) && npm ci && npm run build && (pm2 delete '$PM2_API_NAME' 2>/dev/null || true) && pm2 start npm --name '$PM2_API_NAME' -- start && pm2 save"
+  environment:
+    name: production
