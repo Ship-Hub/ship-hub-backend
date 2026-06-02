@@ -30,8 +30,9 @@ const MB_CLIENT_SECRET = process.env.MEMOBANK_CLIENT_SECRET ?? 'shiphub-oauth-se
 const MB_REDIRECT_URI = process.env.SHIPHUB_REDIRECT_URI ?? process.env.MEMOBANK_REDIRECT_URI ?? 'http://localhost:5174/auth/callback/memobank';
 
 async function fetchMemoBankMe(apiKey: string) {
-  const res = await fetch('https://api.memobank.online/v1/auth/me', {
-    headers: { 'Authorization': `Bearer ${apiKey}`, 'X-Api-Key': apiKey },
+  const mbUrl = (process.env.MEMOBANK_URL ?? 'https://api.memobank.online/v1').replace(/\/$/, '');
+  const res = await fetch(`${mbUrl}/auth/me-by-key`, {
+    headers: { 'X-Api-Key': apiKey },
   });
   if (!res.ok) throw new AppError(401, 'INVALID_MEMOBANK_KEY', 'Invalid Memo Bank API key');
   const data = await res.json() as any;
