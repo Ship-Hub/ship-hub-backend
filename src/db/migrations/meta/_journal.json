@@ -1,0 +1,48 @@
+{
+  "version": "7",
+  "dialect": "mysql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "5",
+      "when": 1780398093758,
+      "tag": "0000_narrow_baron_zemo",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "5",
+      "when": 1780401195386,
+      "tag": "0001_first_mandroid",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1780402108429,
+      "tag": "0002_mixed_mentor",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "5",
+      "when": 1780405001657,
+      "tag": "0003_mighty_impossible_man",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "5",
+      "when": 1780406237133,
+      "tag": "0004_dark_ben_urich",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "5",
+      "when": 1780407285777,
+      "tag": "0005_majestic_bromley",
+      "breakpoints": true
+    }
+  ]
+}
