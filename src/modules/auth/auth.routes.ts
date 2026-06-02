@@ -29,6 +29,23 @@ const MB_CLIENT_ID = process.env.MEMOBANK_CLIENT_ID ?? 'shiphub';
 const MB_CLIENT_SECRET = process.env.MEMOBANK_CLIENT_SECRET ?? 'shiphub-oauth-secret-change-in-production';
 const MB_REDIRECT_URI = process.env.SHIPHUB_REDIRECT_URI ?? process.env.MEMOBANK_REDIRECT_URI ?? 'http://localhost:5174/auth/callback/memobank';
 
+function memoBankUsername(user: any): string {
+  const preferred = user.displayName ?? user.display_name ?? user.username ?? user.email?.split('@')[0];
+  return String(preferred ?? `mb_${String(user.id).slice(0, 8)}`)
+    .trim()
+    .replace(/[^a-zA-Z0-9_-]/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 50) || `mb_${String(user.id).slice(0, 8)}`;
+}
+
+async function uniqueUsername(base: string, currentUserId?: string): Promise<string> {
+  const candidate = base.slice(0, 50);
+  const [taken] = await db.select().from(users).where(eq(users.username, candidate));
+  if (!taken || taken.id === currentUserId) return candidate;
+  return `${candidate.slice(0, 43)}_${randomUUID().slice(0, 6)}`;
+}
+
 async function fetchMemoBankMe(apiKey: string) {
   const mbUrl = (process.env.MEMOBANK_URL ?? 'https://api.memobank.online/v1').replace(/\/$/, '');
   const res = await fetch(`${mbUrl}/auth/me-by-key`, {
@@ -76,7 +93,7 @@ export async function authRoutes(app: FastifyInstance) {
     const mbUser = await fetchMemoBankMe(apiKey);
     const mbUserId = String(mbUser.id);
     const mbEmail = mbUser.email as string;
-    const mbUsername = (mbUser.username ?? mbUser.email?.split('@')[0] ?? `mb_${mbUserId.slice(0, 8)}`) as string;
+    const mbUsername = memoBankUsername(mbUser);
     const mbDisplayName = (mbUser.displayName ?? mbUser.display_name ?? mbUsername) as string;
 
     // Find existing ShipHub user linked to this Memo Bank account
@@ -90,7 +107,10 @@ export async function authRoutes(app: FastifyInstance) {
 
     if (existing) {
       // Update stored key + Memo Bank fields
+      const username = await uniqueUsername(mbUsername, existing.id);
       await db.update(users).set({
+        username,
+        displayName: mbDisplayName,
         memoBankApiKey: apiKey,
         memoBankUserId: mbUserId,
         memoBankUsername: mbUsername,
@@ -102,9 +122,7 @@ export async function authRoutes(app: FastifyInstance) {
     }
 
     // New user — pick a unique username
-    let username = mbUsername.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 50);
-    const [taken] = await db.select().from(users).where(eq(users.username, username));
-    if (taken) username = `${username}_${randomUUID().slice(0, 6)}`;
+    const username = await uniqueUsername(mbUsername);
 
     const id = randomUUID();
     await db.insert(users).values({
@@ -130,7 +148,8 @@ export async function authRoutes(app: FastifyInstance) {
 
     const mbUser = await fetchMemoBankMe(apiKey);
     const mbUserId = String(mbUser.id);
-    const mbUsername = (mbUser.username ?? mbUser.email?.split('@')[0]) as string;
+    const mbUsername = memoBankUsername(mbUser);
+    const mbDisplayName = (mbUser.displayName ?? mbUser.display_name ?? mbUsername) as string;
 
     // Check this Memo Bank account isn't already linked to a different ShipHub user
     const [alreadyLinked] = await db.select().from(users).where(eq(users.memoBankUserId, mbUserId));
@@ -138,7 +157,10 @@ export async function authRoutes(app: FastifyInstance) {
       throw new AppError(409, 'ALREADY_LINKED', 'This Memo Bank account is linked to a different ShipHub account');
     }
 
+    const username = await uniqueUsername(mbUsername, userId);
     await db.update(users).set({
+      username,
+      displayName: mbDisplayName,
       memoBankApiKey: apiKey,
       memoBankUserId: mbUserId,
       memoBankUsername: mbUsername,
@@ -194,7 +216,8 @@ export async function authRoutes(app: FastifyInstance) {
     const { user: mbUser } = await tokenRes.json() as any;
     const mbUserId = String(mbUser.id);
     const mbEmail = mbUser.email as string;
-    const mbDisplayName = (mbUser.displayName ?? mbEmail.split('@')[0]) as string;
+    const mbUsername = memoBankUsername(mbUser);
+    const mbDisplayName = (mbUser.displayName ?? mbUser.display_name ?? mbUsername) as string;
 
     let [existing] = await db.select().from(users).where(eq(users.memoBankUserId, mbUserId));
     if (!existing) {
@@ -203,18 +226,22 @@ export async function authRoutes(app: FastifyInstance) {
     }
 
     if (existing) {
-      await db.update(users).set({ memoBankUserId: mbUserId }).where(eq(users.id, existing.id));
+      const username = await uniqueUsername(mbUsername, existing.id);
+      await db.update(users).set({
+        username,
+        displayName: mbDisplayName,
+        memoBankUserId: mbUserId,
+        memoBankUsername: mbUsername,
+      }).where(eq(users.id, existing.id));
       const [updated] = await db.select().from(users).where(eq(users.id, existing.id));
       const token = app.jwt.sign({ id: updated.id, username: updated.username });
       return reply.send({ user: sanitizeUser(updated), token });
     }
 
-    let username = mbEmail.split('@')[0].replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 50);
-    const [taken] = await db.select().from(users).where(eq(users.username, username));
-    if (taken) username = `${username}_${randomUUID().slice(0, 6)}`;
+    const username = await uniqueUsername(mbUsername);
 
     const id = randomUUID();
-    await db.insert(users).values({ id, email: mbEmail, username, displayName: mbDisplayName, memoBankUserId: mbUserId, emailVerified: 1 });
+    await db.insert(users).values({ id, email: mbEmail, username, displayName: mbDisplayName, memoBankUserId: mbUserId, memoBankUsername: mbUsername, emailVerified: 1 });
     const [created] = await db.select().from(users).where(eq(users.id, id));
     const token = app.jwt.sign({ id: created.id, username: created.username });
     return reply.send({ user: sanitizeUser(created), token, isNew: true });
