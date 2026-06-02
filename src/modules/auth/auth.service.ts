@@ -26,7 +26,11 @@ export const authService = {
   },
 
   async login(data: { email: string; password: string }) {
-    const user = await authRepository.findByEmail(data.email);
+    const identifier = data.email.replace(/^@/, '');
+    const isEmail = identifier.includes('@');
+    const user = isEmail
+      ? await authRepository.findByEmail(identifier)
+      : await authRepository.findByUsername(identifier);
     if (!user || !user.passwordHash) throw new AppError(401, 'INVALID_CREDENTIALS', 'Invalid email or password');
 
     const valid = await bcrypt.compare(data.password, user.passwordHash);
