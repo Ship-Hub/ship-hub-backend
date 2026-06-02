@@ -50,6 +50,13 @@
       "when": 1780421500000,
       "tag": "0006_post_quotes_and_reactions",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "5",
+      "when": 1780425000000,
+      "tag": "0007_backfill_auth_packs_notifications",
+      "breakpoints": true
     }
   ]
 }
