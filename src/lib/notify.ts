@@ -4,7 +4,7 @@ import { notifications, users } from '../db/schema/index.js';
 import { eq } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
 
-export type NotifType = 'fork' | 'follow' | 'comment' | 'like' | 'mention' | 'reaction' | 'quote';
+export type NotifType = 'fork' | 'follow' | 'comment' | 'like' | 'mention' | 'reaction' | 'quote' | 'collab_apply' | 'answer_accepted' | 'chat_mention';
 
 interface NotifPayload {
   userId: string;

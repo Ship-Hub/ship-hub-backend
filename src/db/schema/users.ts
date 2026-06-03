@@ -25,6 +25,7 @@ export const users = mysqlTable('users', {
   followerCount: int('follower_count').default(0),
   followingCount: int('following_count').default(0),
   memoryCount: int('memory_count').default(0),
+  lastSeen: timestamp('last_seen'),
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow().onUpdateNow(),
 });

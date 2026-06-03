@@ -64,6 +64,13 @@
       "when": 1780428600000,
       "tag": "0008_admin_pins_editing_messages",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "5",
+      "when": 1780514400000,
+      "tag": "0009_community_features",
+      "breakpoints": true
     }
   ]
 }

@@ -5,9 +5,8 @@ import { authenticate } from '../../lib/middleware.js';
 import { AppError } from '../../lib/errors.js';
 import { createNotification } from '../../lib/notify.js';
 import { db } from '../../db/index.js';
-import { users, follows } from '../../db/schema/index.js';
+import { users, follows, memories, posts } from '../../db/schema/index.js';
 import { eq, desc, sql, and } from 'drizzle-orm';
-import { memories } from '../../db/schema/index.js';
 import { z } from 'zod';
 
 const updateSchema = z.object({
@@ -150,6 +149,39 @@ export async function usersRoutes(app: FastifyInstance) {
       .groupBy(users.id)
       .orderBy(desc(repExpr))
       .limit(lim);
+
+    return reply.send({ builders: rows });
+  });
+
+  // Trending builders — top 10 by last-7-day activity
+  app.get('/users/trending', async (_req, reply) => {
+    const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+
+    const scoreExpr = sql<number>`(
+      COUNT(DISTINCT CASE WHEN ${posts.createdAt} >= ${since} THEN ${posts.id} END) +
+      COUNT(DISTINCT CASE WHEN ${memories.createdAt} >= ${since} THEN ${memories.id} END) +
+      (COALESCE(SUM(CASE WHEN ${memories.createdAt} >= ${since} THEN ${memories.likeCount} END), 0) * 2) +
+      (${users.followerCount} * 2)
+    )`;
+
+    const rows = await db
+      .select({
+        id: users.id,
+        username: users.username,
+        displayName: users.displayName,
+        avatar: users.avatar,
+        bio: users.bio,
+        followerCount: users.followerCount,
+        memoryCount: users.memoryCount,
+        weeklyScore: scoreExpr,
+      })
+      .from(users)
+      .leftJoin(memories, eq(memories.userId, users.id))
+      .leftJoin(posts, eq(posts.userId, users.id))
+      .where(eq(users.banned, 0))
+      .groupBy(users.id)
+      .orderBy(desc(scoreExpr))
+      .limit(10);
 
     return reply.send({ builders: rows });
   });

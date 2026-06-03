@@ -7,3 +7,6 @@ export * from './notifications.js';
 export * from './posts.js';
 export * from './packs.js';
 export * from './messages.js';
+export * from './polls.js';
+export * from './collabs.js';
+export * from './chat.js';

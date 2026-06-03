@@ -1,28 +1,80 @@
 import type { FastifyInstance } from 'fastify';
 import { db } from '../../db/index.js';
-import { posts, memories, users, follows } from '../../db/schema/index.js';
+import { posts, memories, users, follows, projects } from '../../db/schema/index.js';
 import { eq, desc, and, gte, sql, inArray } from 'drizzle-orm';
 
+type FeedType =
+  | 'all'
+  | 'memories'
+  | 'posts'
+  | 'trending'
+  | 'following'
+  | 'build_updates'
+  | 'code'
+  | 'collaborations'
+  | 'polls'
+  | 'questions'
+  | 'projects';
+
 export async function feedRoutes(app: FastifyInstance) {
-  // Unified feed — mixes posts + memories, sorted by createdAt
   app.get('/feed', async (req, reply) => {
     const { limit = 30, offset = 0, type = 'all' } = req.query as {
       limit?: number;
       offset?: number;
-      type?: 'all' | 'memories' | 'posts' | 'trending' | 'following';
+      type?: FeedType;
     };
 
     const lim = Math.min(Number(limit), 50);
     const off = Number(offset);
 
-    // Following feed — requires auth
+    // ── Post-type filtered tabs ──────────────────────────────────────────────
+    const POST_TYPE_MAP: Record<string, string> = {
+      build_updates: 'build_update',
+      code: 'code_snippet',
+      collaborations: 'collab_request',
+      polls: 'poll',
+      questions: 'question',
+    };
+
+    if (type in POST_TYPE_MAP) {
+      const postType = POST_TYPE_MAP[type];
+      const rows = await db
+        .select({
+          post: posts,
+          author: { id: users.id, username: users.username, displayName: users.displayName, avatar: users.avatar },
+        })
+        .from(posts)
+        .leftJoin(users, eq(posts.userId, users.id))
+        .where(and(eq(posts.visibility, 'public'), eq(posts.type, postType as any)))
+        .orderBy(desc(posts.createdAt))
+        .limit(lim)
+        .offset(off);
+
+      return reply.send({ items: rows.map(r => ({ type: 'post' as const, ...r, createdAt: r.post.createdAt })) });
+    }
+
+    // ── Projects tab ─────────────────────────────────────────────────────────
+    if (type === 'projects') {
+      const rows = await db
+        .select({
+          project: projects,
+          author: { id: users.id, username: users.username, displayName: users.displayName, avatar: users.avatar },
+        })
+        .from(projects)
+        .leftJoin(users, eq(projects.userId, users.id))
+        .orderBy(desc(projects.createdAt))
+        .limit(lim)
+        .offset(off);
+
+      return reply.send({ items: rows.map(r => ({ type: 'project' as const, ...r, createdAt: r.project.createdAt })) });
+    }
+
+    // ── Following feed ────────────────────────────────────────────────────────
     if (type === 'following') {
       let requesterId: string | undefined;
       try { await req.jwtVerify(); requesterId = (req.user as any).id; } catch {}
-
       if (!requesterId) return reply.send({ items: [] });
 
-      // Get IDs of people this user follows
       const followRows = await db
         .select({ followingId: follows.followingId })
         .from(follows)
@@ -62,6 +114,7 @@ export async function feedRoutes(app: FastifyInstance) {
       return reply.send({ items: items.slice(off, off + lim) });
     }
 
+    // ── Trending (memories by engagement score) ───────────────────────────────
     if (type === 'trending') {
       const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
       const rows = await db
@@ -76,12 +129,11 @@ export async function feedRoutes(app: FastifyInstance) {
         .limit(lim)
         .offset(off);
 
-      return reply.send({
-        items: rows.map(r => ({ type: 'memory' as const, ...r, createdAt: r.memory.createdAt })),
-      });
+      return reply.send({ items: rows.map(r => ({ type: 'memory' as const, ...r, createdAt: r.memory.createdAt })) });
     }
 
-    const items: Array<{ type: 'memory' | 'post'; createdAt: Date | string | null; [k: string]: any }> = [];
+    // ── All / Memories / Posts ────────────────────────────────────────────────
+    const items: Array<{ type: 'memory' | 'post' | 'project'; createdAt: Date | string | null; [k: string]: any }> = [];
 
     if (type === 'all' || type === 'memories') {
       const memRows = await db
@@ -113,10 +165,21 @@ export async function feedRoutes(app: FastifyInstance) {
       items.push(...postRows.map(r => ({ type: 'post' as const, ...r, createdAt: r.post.createdAt })));
     }
 
-    // Sort merged items by createdAt desc, paginate
-    items.sort((a, b) => new Date(b.createdAt!).getTime() - new Date(a.createdAt!).getTime());
-    const paginated = items.slice(off, off + lim);
+    if (type === 'all') {
+      const projectRows = await db
+        .select({
+          project: projects,
+          author: { id: users.id, username: users.username, displayName: users.displayName, avatar: users.avatar },
+        })
+        .from(projects)
+        .leftJoin(users, eq(projects.userId, users.id))
+        .orderBy(desc(projects.createdAt))
+        .limit(lim);
 
-    return reply.send({ items: paginated });
+      items.push(...projectRows.map(r => ({ type: 'project' as const, ...r, createdAt: r.project.createdAt })));
+    }
+
+    items.sort((a, b) => new Date(b.createdAt!).getTime() - new Date(a.createdAt!).getTime());
+    return reply.send({ items: items.slice(off, off + lim) });
   });
 }

@@ -18,6 +18,8 @@ import { feedRoutes } from './modules/feed/feed.routes.js';
 import { packsRoutes } from './modules/packs/packs.routes.js';
 import { messagesRoutes } from './modules/messages/messages.routes.js';
 import { adminRoutes } from './modules/admin/admin.routes.js';
+import { chatRoutes } from './modules/chat/chat.routes.js';
+import { presenceRoutes } from './modules/presence/presence.routes.js';
 import { AppError } from './lib/errors.js';
 import fastifyRateLimit from '@fastify/rate-limit';
 import fastifyMultipart from '@fastify/multipart';
@@ -81,6 +83,8 @@ await app.register(async (instance) => {
   await instance.register(packsRoutes);
   await instance.register(messagesRoutes);
   await instance.register(adminRoutes);
+  await instance.register(chatRoutes);
+  await instance.register(presenceRoutes);
 }, { prefix });
 
 // Error handler
