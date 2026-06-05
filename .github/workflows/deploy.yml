@@ -1,0 +1,71 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    name: Build & Deploy to Contabo
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Deploy via SSH
+        env:
+          SSH_PRIVATE_KEY_B64: ${{ secrets.SSH_PRIVATE_KEY_B64 }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          DEPLOY_PATH="/var/www/ship-hub/backend"
+          PM2_NAME="shiphub-api"
+
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s' "$SSH_PRIVATE_KEY_B64" | base64 -d > ~/.ssh/id_ed25519
+          chmod 400 ~/.ssh/id_ed25519
+          eval $(ssh-agent -s)
+          ssh-add ~/.ssh/id_ed25519
+          ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts
+
+          SSH="ssh -o ServerAliveInterval=15 -o ServerAliveCountMax=8 -o ConnectTimeout=30"
+          TARGET="$DEPLOY_USER@$DEPLOY_HOST"
+
+          $SSH "$TARGET" "mkdir -p '$DEPLOY_PATH'"
+
+          tar --exclude='.git' \
+              --exclude='node_modules' \
+              --exclude='dist' \
+              --exclude='.env' \
+              --exclude='*.log' \
+              --exclude='uploads' \
+              -czf - . | $SSH "$TARGET" "tar -xzf - -C '$DEPLOY_PATH'"
+
+          $SSH "$TARGET" "
+            find '$DEPLOY_PATH' -type d -exec chmod 755 {} + && \
+            find '$DEPLOY_PATH' -type f -exec chmod 644 {} + && \
+            chmod 600 '$DEPLOY_PATH/.env'
+          "
+
+          $SSH "$TARGET" "
+            export PATH=/usr/local/bin:/usr/bin:/bin:\$PATH
+            cd '$DEPLOY_PATH'
+            node --version && npm --version
+            npm ci
+            npm run build
+            pm2 delete '$PM2_NAME' 2>/dev/null || true
+            pm2 start npm --name '$PM2_NAME' -- start
+            pm2 save
+          "
