@@ -15,5 +15,7 @@ export const chatMessages = mysqlTable('chat_messages', {
   channelId: varchar('channel_id', { length: 36 }).notNull(),
   userId: varchar('user_id', { length: 36 }).notNull(),
   content: text('content').notNull(),
+  pinnedAt: timestamp('pinned_at'),
+  pinnedById: varchar('pinned_by_id', { length: 36 }),
   createdAt: timestamp('created_at').defaultNow(),
 });

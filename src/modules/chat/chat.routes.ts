@@ -9,9 +9,37 @@ import { notifyMentions } from '../../lib/notify.js';
 import { randomUUID } from 'crypto';
 import { z } from 'zod';
 
+const DEFAULT_CHANNELS = [
+  { name: 'General', slug: 'general', description: 'General discussion for all builders' },
+  { name: 'Build Updates', slug: 'build-updates', description: 'Share what you shipped today' },
+  { name: 'Code Review', slug: 'code-review', description: 'Get feedback on your code' },
+  { name: 'Collabs', slug: 'collabs', description: 'Find collaborators and team up' },
+  { name: 'Showcase', slug: 'showcase', description: 'Show off your projects' },
+];
+
+async function ensureDefaultChannels() {
+  for (const channel of DEFAULT_CHANNELS) {
+    const [existing] = await db.select({ id: chatChannels.id }).from(chatChannels).where(eq(chatChannels.slug, channel.slug));
+    if (!existing) {
+      await db.insert(chatChannels).values({ id: randomUUID(), ...channel, isDefault: 1 });
+    }
+  }
+}
+
+async function requireCommunityAdmin(userId: string) {
+  const [user] = await db
+    .select({ isAdmin: users.isAdmin, platformAdmin: users.platformAdmin, communityAdmin: users.communityAdmin })
+    .from(users)
+    .where(eq(users.id, userId));
+  if (!user?.isAdmin && !user?.platformAdmin && !user?.communityAdmin) {
+    throw new AppError(403, 'FORBIDDEN', 'Community admin access required');
+  }
+}
+
 export async function chatRoutes(app: FastifyInstance) {
   // List all channels
   app.get('/chat/channels', async (_req, reply) => {
+    await ensureDefaultChannels();
     const channels = await db
       .select()
       .from(chatChannels)
@@ -53,7 +81,7 @@ export async function chatRoutes(app: FastifyInstance) {
       .from(chatMessages)
       .leftJoin(users, eq(chatMessages.userId, users.id))
       .where(whereClause)
-      .orderBy(desc(chatMessages.createdAt))
+      .orderBy(desc(chatMessages.pinnedAt), desc(chatMessages.createdAt))
       .limit(lim);
 
     // Return oldest-first so the frontend can append naturally
@@ -65,6 +93,14 @@ export async function chatRoutes(app: FastifyInstance) {
     const { id: userId } = req.user as { id: string };
     const { slug } = req.params as { slug: string };
     const { content } = z.object({ content: z.string().min(1).max(4000) }).parse(req.body);
+
+    const [sender] = await db
+      .select({ communityMutedUntil: users.communityMutedUntil })
+      .from(users)
+      .where(eq(users.id, userId));
+    if (sender?.communityMutedUntil && new Date(sender.communityMutedUntil) > new Date()) {
+      throw new AppError(403, 'COMMUNITY_MUTED', 'You are muted in community chat');
+    }
 
     const [channel] = await db.select().from(chatChannels).where(eq(chatChannels.slug, slug));
     if (!channel) throw new AppError(404, 'NOT_FOUND', 'Channel not found');
@@ -88,6 +124,23 @@ export async function chatRoutes(app: FastifyInstance) {
     await notifyMentions(content, userId, {});
 
     return reply.status(201).send(payload);
+  });
+
+  app.post('/chat/messages/:id/pin', { preHandler: [authenticate] }, async (req, reply) => {
+    const { id: userId } = req.user as { id: string };
+    const { id } = req.params as { id: string };
+    await requireCommunityAdmin(userId);
+
+    const [message] = await db.select().from(chatMessages).where(eq(chatMessages.id, id));
+    if (!message) throw new AppError(404, 'NOT_FOUND', 'Message not found');
+
+    const pinned = !message.pinnedAt;
+    await db.update(chatMessages).set({
+      pinnedAt: pinned ? new Date() : null,
+      pinnedById: pinned ? userId : null,
+    }).where(eq(chatMessages.id, id));
+
+    return reply.send({ pinned });
   });
 
   // SSE stream for a channel

@@ -11,6 +11,17 @@ import { createNotification, notifyMentions } from '../../lib/notify.js';
 import { randomUUID } from 'crypto';
 import { z } from 'zod';
 
+async function getModerationRole(userId: string) {
+  const [user] = await db
+    .select({ isAdmin: users.isAdmin, platformAdmin: users.platformAdmin, communityAdmin: users.communityAdmin })
+    .from(users)
+    .where(eq(users.id, userId));
+  return {
+    platformAdmin: !!user?.isAdmin || !!user?.platformAdmin,
+    communityAdmin: !!user?.communityAdmin || !!user?.isAdmin || !!user?.platformAdmin,
+  };
+}
+
 async function fetchPostWithQuote(id: string) {
   const [row] = await db
     .select({
@@ -92,7 +103,7 @@ export async function postsRoutes(app: FastifyInstance) {
           ? and(eq(posts.visibility, 'public'), eq(posts.type, type as any))
           : eq(posts.visibility, 'public')
       )
-      .orderBy(desc(posts.createdAt))
+      .orderBy(desc(posts.pinnedAt), desc(posts.createdAt))
       .limit(lim)
       .offset(Number(offset));
 
@@ -191,9 +202,28 @@ export async function postsRoutes(app: FastifyInstance) {
     const { id } = req.params as { id: string };
     const [post] = await db.select().from(posts).where(eq(posts.id, id));
     if (!post) throw new AppError(404, 'NOT_FOUND', 'Post not found');
-    if (post.userId !== userId) throw new AppError(403, 'FORBIDDEN', 'Not your post');
+    const role = await getModerationRole(userId);
+    if (post.userId !== userId && !role.platformAdmin) throw new AppError(403, 'FORBIDDEN', 'Not your post');
     await db.delete(posts).where(eq(posts.id, id));
     return reply.status(204).send();
+  });
+
+  app.post('/posts/:id/pin', { preHandler: [authenticate] }, async (req, reply) => {
+    const { id: userId } = req.user as { id: string };
+    const { id } = req.params as { id: string };
+    const role = await getModerationRole(userId);
+    if (!role.communityAdmin) throw new AppError(403, 'FORBIDDEN', 'Community admin access required');
+
+    const [post] = await db.select().from(posts).where(eq(posts.id, id));
+    if (!post) throw new AppError(404, 'NOT_FOUND', 'Post not found');
+
+    const pinned = !post.pinnedAt;
+    await db.update(posts).set({
+      pinnedAt: pinned ? new Date() : null,
+      pinnedById: pinned ? userId : null,
+    }).where(eq(posts.id, id));
+
+    return reply.send({ pinned });
   });
 
   // Saved posts for current user

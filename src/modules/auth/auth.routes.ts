@@ -28,6 +28,10 @@ const MB_URL = process.env.MEMOBANK_URL ?? 'http://localhost:3000';
 const MB_CLIENT_ID = process.env.MEMOBANK_CLIENT_ID ?? 'shiphub';
 const MB_CLIENT_SECRET = process.env.MEMOBANK_CLIENT_SECRET ?? 'shiphub-oauth-secret-change-in-production';
 const MB_REDIRECT_URI = process.env.SHIPHUB_REDIRECT_URI ?? process.env.MEMOBANK_REDIRECT_URI ?? 'http://localhost:5174/auth/callback/memobank';
+const BOOTSTRAP_PLATFORM_ADMINS = (process.env.SHIPHUB_PLATFORM_ADMINS ?? '')
+  .split(',')
+  .map(v => v.trim().toLowerCase())
+  .filter(Boolean);
 
 function memoBankUsername(user: any): string {
   const preferred = user.displayName ?? user.display_name ?? user.username ?? user.email?.split('@')[0];
@@ -56,6 +60,17 @@ async function fetchMemoBankMe(apiKey: string) {
   return data.user ?? data;
 }
 
+async function applyBootstrapAdmin(user: any) {
+  if (!BOOTSTRAP_PLATFORM_ADMINS.length) return user;
+  const identifiers = [user.email, user.username].filter(Boolean).map((v: string) => v.toLowerCase());
+  if (!identifiers.some((id: string) => BOOTSTRAP_PLATFORM_ADMINS.includes(id))) return user;
+  if (user.isAdmin && user.platformAdmin && user.communityAdmin) return user;
+
+  await db.update(users).set({ isAdmin: 1, platformAdmin: 1, communityAdmin: 1 }).where(eq(users.id, user.id));
+  const [updated] = await db.select().from(users).where(eq(users.id, user.id));
+  return updated ?? user;
+}
+
 export async function authRoutes(app: FastifyInstance) {
   const authLimit = { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } };
 
@@ -74,14 +89,14 @@ export async function authRoutes(app: FastifyInstance) {
 
   app.post('/auth/login', { ...authLimit }, async (req, reply) => {
     const body = loginSchema.parse(req.body);
-    const user = await authService.login(body);
+    const user = await applyBootstrapAdmin(await authService.login(body));
     const token = app.jwt.sign({ id: user.id, username: user.username });
     return reply.send({ user: sanitizeUser(user), token });
   });
 
   app.get('/auth/me', { preHandler: [authenticate] }, async (req, reply) => {
     const { id } = req.user as { id: string };
-    const user = await authService.getMe(id);
+    const user = await applyBootstrapAdmin(await authService.getMe(id));
     return reply.send({ user: sanitizeUser(user) });
   });
 
@@ -116,7 +131,8 @@ export async function authRoutes(app: FastifyInstance) {
         memoBankUsername: mbUsername,
       }).where(eq(users.id, existing.id));
 
-      const [updated] = await db.select().from(users).where(eq(users.id, existing.id));
+      let [updated] = await db.select().from(users).where(eq(users.id, existing.id));
+      updated = await applyBootstrapAdmin(updated);
       const token = app.jwt.sign({ id: updated.id, username: updated.username });
       return reply.send({ user: sanitizeUser(updated), token });
     }
@@ -136,7 +152,8 @@ export async function authRoutes(app: FastifyInstance) {
       emailVerified: 1, // MemoBank already verified this email
     });
 
-    const [created] = await db.select().from(users).where(eq(users.id, id));
+    let [created] = await db.select().from(users).where(eq(users.id, id));
+    created = await applyBootstrapAdmin(created);
     const token = app.jwt.sign({ id: created.id, username: created.username });
     return reply.status(201).send({ user: sanitizeUser(created), token, isNew: true });
   });
@@ -233,7 +250,8 @@ export async function authRoutes(app: FastifyInstance) {
         memoBankUserId: mbUserId,
         memoBankUsername: mbUsername,
       }).where(eq(users.id, existing.id));
-      const [updated] = await db.select().from(users).where(eq(users.id, existing.id));
+      let [updated] = await db.select().from(users).where(eq(users.id, existing.id));
+      updated = await applyBootstrapAdmin(updated);
       const token = app.jwt.sign({ id: updated.id, username: updated.username });
       return reply.send({ user: sanitizeUser(updated), token });
     }
@@ -242,7 +260,8 @@ export async function authRoutes(app: FastifyInstance) {
 
     const id = randomUUID();
     await db.insert(users).values({ id, email: mbEmail, username, displayName: mbDisplayName, memoBankUserId: mbUserId, memoBankUsername: mbUsername, emailVerified: 1 });
-    const [created] = await db.select().from(users).where(eq(users.id, id));
+    let [created] = await db.select().from(users).where(eq(users.id, id));
+    created = await applyBootstrapAdmin(created);
     const token = app.jwt.sign({ id: created.id, username: created.username });
     return reply.send({ user: sanitizeUser(created), token, isNew: true });
   });

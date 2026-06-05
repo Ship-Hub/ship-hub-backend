@@ -71,6 +71,13 @@
       "when": 1780514400000,
       "tag": "0009_community_features",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "5",
+      "when": 1780699200000,
+      "tag": "0010_admin_roles_and_pins",
+      "breakpoints": true
     }
   ]
 }

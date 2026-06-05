@@ -151,32 +151,41 @@ export async function feedRoutes(app: FastifyInstance) {
     }
 
     if (type === 'all' || type === 'posts') {
-      const postRows = await db
-        .select({
-          post: posts,
-          author: { id: users.id, username: users.username, displayName: users.displayName, avatar: users.avatar },
-        })
-        .from(posts)
-        .leftJoin(users, eq(posts.userId, users.id))
-        .where(eq(posts.visibility, 'public'))
-        .orderBy(desc(posts.createdAt))
-        .limit(type === 'posts' ? lim : lim * 2);
+      try {
+        const postRows = await db
+          .select({
+            post: posts,
+            author: { id: users.id, username: users.username, displayName: users.displayName, avatar: users.avatar },
+          })
+          .from(posts)
+          .leftJoin(users, eq(posts.userId, users.id))
+          .where(eq(posts.visibility, 'public'))
+          .orderBy(desc(posts.pinnedAt), desc(posts.createdAt))
+          .limit(type === 'posts' ? lim : lim * 2);
 
-      items.push(...postRows.map(r => ({ type: 'post' as const, ...r, createdAt: r.post.createdAt })));
+        items.push(...postRows.map(r => ({ type: 'post' as const, ...r, createdAt: r.post.pinnedAt ?? r.post.createdAt })));
+      } catch (error) {
+        if (type === 'posts') throw error;
+        req.log.warn({ error }, 'Skipping posts in all feed because post query failed');
+      }
     }
 
     if (type === 'all') {
-      const projectRows = await db
-        .select({
-          project: projects,
-          author: { id: users.id, username: users.username, displayName: users.displayName, avatar: users.avatar },
-        })
-        .from(projects)
-        .leftJoin(users, eq(projects.userId, users.id))
-        .orderBy(desc(projects.createdAt))
-        .limit(lim);
+      try {
+        const projectRows = await db
+          .select({
+            project: projects,
+            author: { id: users.id, username: users.username, displayName: users.displayName, avatar: users.avatar },
+          })
+          .from(projects)
+          .leftJoin(users, eq(projects.userId, users.id))
+          .orderBy(desc(projects.createdAt))
+          .limit(lim);
 
-      items.push(...projectRows.map(r => ({ type: 'project' as const, ...r, createdAt: r.project.createdAt })));
+        items.push(...projectRows.map(r => ({ type: 'project' as const, ...r, createdAt: r.project.createdAt })));
+      } catch (error) {
+        req.log.warn({ error }, 'Skipping projects in all feed because project query failed');
+      }
     }
 
     items.sort((a, b) => new Date(b.createdAt!).getTime() - new Date(a.createdAt!).getTime());

@@ -31,6 +31,8 @@ export const posts = mysqlTable('posts', {
   likeCount: int('like_count').default(0),
   saveCount: int('save_count').default(0),
   commentCount: int('comment_count').default(0),
+  pinnedAt: timestamp('pinned_at'),
+  pinnedById: varchar('pinned_by_id', { length: 36 }),
   editedAt: timestamp('edited_at'),
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow().onUpdateNow(),
