@@ -52,6 +52,7 @@ jobs:
             chmod 600 .env
             npm ci
             npm run build
+            npm run migrate
             pm2 delete shiphub-api 2>/dev/null || true
             pm2 start npm --name shiphub-api -- start
             pm2 save
