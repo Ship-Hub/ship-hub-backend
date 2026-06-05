@@ -24,48 +24,35 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Deploy via SSH
-        env:
-          SSH_PRIVATE_KEY_B64: ${{ secrets.SSH_PRIVATE_KEY_B64 }}
-          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
-          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+      - name: Load SSH key
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Add server to known hosts
+        run: ssh-keyscan -H ${{ secrets.DEPLOY_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Copy files to server
         run: |
-          DEPLOY_PATH="/var/www/ship-hub/backend"
-          PM2_NAME="shiphub-api"
-
-          mkdir -p ~/.ssh && chmod 700 ~/.ssh
-          printf '%s' "$SSH_PRIVATE_KEY_B64" | base64 -d > ~/.ssh/id_ed25519
-          chmod 400 ~/.ssh/id_ed25519
-          eval $(ssh-agent -s)
-          ssh-add ~/.ssh/id_ed25519
-          ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts
-
-          SSH="ssh -o ServerAliveInterval=15 -o ServerAliveCountMax=8 -o ConnectTimeout=30"
-          TARGET="$DEPLOY_USER@$DEPLOY_HOST"
-
-          $SSH "$TARGET" "mkdir -p '$DEPLOY_PATH'"
-
           tar --exclude='.git' \
               --exclude='node_modules' \
               --exclude='dist' \
               --exclude='.env' \
               --exclude='*.log' \
               --exclude='uploads' \
-              -czf - . | $SSH "$TARGET" "tar -xzf - -C '$DEPLOY_PATH'"
+              -czf - . \
+          | ssh ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
+              "tar -xzf - -C /var/www/ship-hub/backend"
 
-          $SSH "$TARGET" "
-            find '$DEPLOY_PATH' -type d -exec chmod 755 {} + && \
-            find '$DEPLOY_PATH' -type f -exec chmod 644 {} + && \
-            chmod 600 '$DEPLOY_PATH/.env'
-          "
-
-          $SSH "$TARGET" "
-            export PATH=/usr/local/bin:/usr/bin:/bin:\$PATH
-            cd '$DEPLOY_PATH'
-            node --version && npm --version
+      - name: Install, build & restart on server
+        run: |
+          ssh ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} bash << 'ENDSSH'
+            set -e
+            cd /var/www/ship-hub/backend
+            chmod 600 .env
             npm ci
             npm run build
-            pm2 delete '$PM2_NAME' 2>/dev/null || true
-            pm2 start npm --name '$PM2_NAME' -- start
+            pm2 delete shiphub-api 2>/dev/null || true
+            pm2 start npm --name shiphub-api -- start
             pm2 save
-          "
+          ENDSSH
