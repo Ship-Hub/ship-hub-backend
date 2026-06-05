@@ -16,6 +16,39 @@ type FeedType =
   | 'questions'
   | 'projects';
 
+async function attachQuotedItems<T extends { post: typeof posts.$inferSelect; [k: string]: any }>(rows: T[]) {
+  return Promise.all(rows.map(async (row) => {
+    let quotedPost = null;
+    let quotedMemory = null;
+
+    if (row.post.quotePostId) {
+      const [qp] = await db
+        .select({
+          post: posts,
+          author: { id: users.id, username: users.username, displayName: users.displayName, avatar: users.avatar },
+        })
+        .from(posts)
+        .leftJoin(users, eq(posts.userId, users.id))
+        .where(eq(posts.id, row.post.quotePostId));
+      quotedPost = qp ?? null;
+    }
+
+    if (row.post.quoteMemoryId) {
+      const [qm] = await db
+        .select({
+          memory: memories,
+          author: { id: users.id, username: users.username, displayName: users.displayName, avatar: users.avatar },
+        })
+        .from(memories)
+        .leftJoin(users, eq(memories.userId, users.id))
+        .where(eq(memories.id, row.post.quoteMemoryId));
+      quotedMemory = qm ?? null;
+    }
+
+    return { ...row, quotedPost, quotedMemory };
+  }));
+}
+
 export async function feedRoutes(app: FastifyInstance) {
   app.get('/feed', async (req, reply) => {
     const { limit = 30, offset = 0, type = 'all' } = req.query as {
@@ -50,7 +83,8 @@ export async function feedRoutes(app: FastifyInstance) {
         .limit(lim)
         .offset(off);
 
-      return reply.send({ items: rows.map(r => ({ type: 'post' as const, ...r, createdAt: r.post.createdAt })) });
+      const rowsWithQuotes = await attachQuotedItems(rows);
+      return reply.send({ items: rowsWithQuotes.map(r => ({ type: 'post' as const, ...r, createdAt: r.post.createdAt })) });
     }
 
     // ── Projects tab ─────────────────────────────────────────────────────────
@@ -109,7 +143,8 @@ export async function feedRoutes(app: FastifyInstance) {
         .orderBy(desc(posts.createdAt))
         .limit(lim * 2);
 
-      items.push(...postRows.map(r => ({ type: 'post' as const, ...r, createdAt: r.post.createdAt })));
+      const postRowsWithQuotes = await attachQuotedItems(postRows);
+      items.push(...postRowsWithQuotes.map(r => ({ type: 'post' as const, ...r, createdAt: r.post.createdAt })));
       items.sort((a, b) => new Date(b.createdAt!).getTime() - new Date(a.createdAt!).getTime());
       return reply.send({ items: items.slice(off, off + lim) });
     }
@@ -163,7 +198,8 @@ export async function feedRoutes(app: FastifyInstance) {
           .orderBy(desc(posts.pinnedAt), desc(posts.createdAt))
           .limit(type === 'posts' ? lim : lim * 2);
 
-        items.push(...postRows.map(r => ({ type: 'post' as const, ...r, createdAt: r.post.pinnedAt ?? r.post.createdAt })));
+        const postRowsWithQuotes = await attachQuotedItems(postRows);
+        items.push(...postRowsWithQuotes.map(r => ({ type: 'post' as const, ...r, createdAt: r.post.pinnedAt ?? r.post.createdAt })));
       } catch (error) {
         if (type === 'posts') throw error;
         req.log.warn({ error }, 'Skipping posts in all feed because post query failed');

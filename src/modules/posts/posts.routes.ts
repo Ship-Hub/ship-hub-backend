@@ -61,6 +61,39 @@ async function fetchPostWithQuote(id: string) {
   return { ...row, quotedPost, quotedMemory, poll };
 }
 
+async function attachQuotedItems<T extends { post: typeof posts.$inferSelect; [k: string]: any }>(rows: T[]) {
+  return Promise.all(rows.map(async (row) => {
+    let quotedPost = null;
+    let quotedMemory = null;
+
+    if (row.post.quotePostId) {
+      const [qp] = await db
+        .select({
+          post: posts,
+          author: { id: users.id, username: users.username, displayName: users.displayName, avatar: users.avatar },
+        })
+        .from(posts)
+        .leftJoin(users, eq(posts.userId, users.id))
+        .where(eq(posts.id, row.post.quotePostId));
+      quotedPost = qp ?? null;
+    }
+
+    if (row.post.quoteMemoryId) {
+      const [qm] = await db
+        .select({
+          memory: memories,
+          author: { id: users.id, username: users.username, displayName: users.displayName, avatar: users.avatar },
+        })
+        .from(memories)
+        .leftJoin(users, eq(memories.userId, users.id))
+        .where(eq(memories.id, row.post.quoteMemoryId));
+      quotedMemory = qm ?? null;
+    }
+
+    return { ...row, quotedPost, quotedMemory };
+  }));
+}
+
 const createPostSchema = z.object({
   type: z.enum(['general', 'build_update', 'code_snippet', 'collab_request', 'poll', 'question']).default('general'),
   content: z.string().min(1).max(5000),
@@ -108,7 +141,7 @@ export async function postsRoutes(app: FastifyInstance) {
       .offset(Number(offset));
 
     const rows = await query;
-    return reply.send({ posts: rows });
+    return reply.send({ posts: await attachQuotedItems(rows) });
   });
 
   // Get single post (with quoted item + poll)
@@ -240,7 +273,7 @@ export async function postsRoutes(app: FastifyInstance) {
       .where(eq(postSaves.userId, userId))
       .orderBy(desc(postSaves.createdAt))
       .limit(100);
-    return reply.send({ posts: rows });
+    return reply.send({ posts: await attachQuotedItems(rows) });
   });
 
   // Save toggle
