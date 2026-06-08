@@ -36,9 +36,14 @@ mkdirSync(UPLOADS_DIR, { recursive: true });
 
 const app = Fastify({ logger: true });
 
+const corsOrigins = (process.env.CORS_ORIGIN ?? process.env.FRONTEND_URL ?? 'http://localhost:5174')
+  .split(',')
+  .map(origin => origin.trim())
+  .filter(Boolean);
+
 // Plugins
 await app.register(fastifyCors, {
-  origin: process.env.CORS_ORIGIN ?? process.env.FRONTEND_URL ?? 'http://localhost:5174',
+  origin: corsOrigins.length === 1 ? corsOrigins[0] : corsOrigins,
   credentials: true,
 });
 

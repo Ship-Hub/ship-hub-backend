@@ -4,6 +4,13 @@ const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KE
 
 const FROM = 'ShipHub <noreply@memobank.online>';
 const APP_URL = process.env.FRONTEND_URL ?? 'http://localhost:5174';
+const APP_HOST = (() => {
+  try {
+    return new URL(APP_URL).host;
+  } catch {
+    return APP_URL.replace(/^https?:\/\//, '').replace(/\/$/, '');
+  }
+})();
 
 async function send(to: string, subject: string, html: string) {
   if (!resend) {
@@ -42,7 +49,7 @@ function base(content: string) {
         <tr><td style="padding:32px">
           ${content}
           <p style="font-size:12px;color:#475569;margin-top:32px;padding-top:24px;border-top:1px solid #1E293B">
-            ShipHub — community.memobank.online<br>
+            ShipHub — ${APP_HOST}<br>
             If you didn't request this, you can safely ignore this email.
           </p>
         </td></tr>
