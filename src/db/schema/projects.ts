@@ -13,6 +13,8 @@ export const projects = mysqlTable('projects', {
   coverImage: varchar('cover_image', { length: 500 }),
   followerCount: int('follower_count').default(0),
   memoryCount: int('memory_count').default(0),
+  likeCount: int('like_count').default(0),
+  commentCount: int('comment_count').default(0),
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow().onUpdateNow(),
 });
@@ -26,5 +28,19 @@ export const projectMemories = mysqlTable('project_memories', {
 export const projectFollows = mysqlTable('project_follows', {
   userId: varchar('user_id', { length: 36 }).notNull(),
   projectId: varchar('project_id', { length: 36 }).notNull(),
+  createdAt: timestamp('created_at').defaultNow(),
+});
+
+export const projectLikes = mysqlTable('project_likes', {
+  userId: varchar('user_id', { length: 36 }).notNull(),
+  projectId: varchar('project_id', { length: 36 }).notNull(),
+  createdAt: timestamp('created_at').defaultNow(),
+});
+
+export const projectComments = mysqlTable('project_comments', {
+  id: varchar('id', { length: 36 }).primaryKey(),
+  projectId: varchar('project_id', { length: 36 }).notNull(),
+  userId: varchar('user_id', { length: 36 }).notNull(),
+  content: text('content').notNull(),
   createdAt: timestamp('created_at').defaultNow(),
 });

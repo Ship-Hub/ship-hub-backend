@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { db } from '../../db/index.js';
 import {
   posts, postLikes, postSaves, postComments, postReactions,
-  users, memories, pollOptions, pollVotes, collabApplications,
+  users, memories, projects, pollOptions, pollVotes, collabApplications,
 } from '../../db/schema/index.js';
 import { eq, desc, and, sql, inArray, lt } from 'drizzle-orm';
 import { authenticate } from '../../lib/middleware.js';
@@ -33,6 +33,7 @@ async function fetchPostWithQuote(id: string) {
 
   let quotedPost = null;
   let quotedMemory = null;
+  let quotedProject = null;
 
   if (row.post.quotePostId) {
     const [qp] = await db
@@ -46,6 +47,12 @@ async function fetchPostWithQuote(id: string) {
       .from(memories).leftJoin(users, eq(memories.userId, users.id)).where(eq(memories.id, row.post.quoteMemoryId));
     quotedMemory = qm ?? null;
   }
+  if (row.post.quoteProjectId) {
+    const [qpr] = await db
+      .select({ project: projects, author: { id: users.id, username: users.username, displayName: users.displayName, avatar: users.avatar } })
+      .from(projects).leftJoin(users, eq(projects.userId, users.id)).where(eq(projects.id, row.post.quoteProjectId));
+    quotedProject = qpr ?? null;
+  }
 
   // Attach poll options if this is a poll
   let poll = null;
@@ -58,13 +65,14 @@ async function fetchPostWithQuote(id: string) {
     poll = { options };
   }
 
-  return { ...row, quotedPost, quotedMemory, poll };
+  return { ...row, quotedPost, quotedMemory, quotedProject, poll };
 }
 
 async function attachQuotedItems<T extends { post: typeof posts.$inferSelect; [k: string]: any }>(rows: T[]) {
   return Promise.all(rows.map(async (row) => {
     let quotedPost = null;
     let quotedMemory = null;
+    let quotedProject = null;
 
     if (row.post.quotePostId) {
       const [qp] = await db
@@ -90,7 +98,19 @@ async function attachQuotedItems<T extends { post: typeof posts.$inferSelect; [k
       quotedMemory = qm ?? null;
     }
 
-    return { ...row, quotedPost, quotedMemory };
+    if (row.post.quoteProjectId) {
+      const [qpr] = await db
+        .select({
+          project: projects,
+          author: { id: users.id, username: users.username, displayName: users.displayName, avatar: users.avatar },
+        })
+        .from(projects)
+        .leftJoin(users, eq(projects.userId, users.id))
+        .where(eq(projects.id, row.post.quoteProjectId));
+      quotedProject = qpr ?? null;
+    }
+
+    return { ...row, quotedPost, quotedMemory, quotedProject };
   }));
 }
 
@@ -102,6 +122,7 @@ const createPostSchema = z.object({
   mediaType: z.enum(['image', 'video']).optional(),
   quotePostId: z.string().optional(),
   quoteMemoryId: z.string().optional(),
+  quoteProjectId: z.string().optional(),
   // code snippet
   language: z.string().max(50).optional(),
   // build update
@@ -173,6 +194,7 @@ export async function postsRoutes(app: FastifyInstance) {
       mediaType: body.mediaType,
       quotePostId: body.quotePostId,
       quoteMemoryId: body.quoteMemoryId,
+      quoteProjectId: body.quoteProjectId,
       language: body.language,
       projectId: body.projectId,
       milestone: body.milestone,
@@ -204,6 +226,10 @@ export async function postsRoutes(app: FastifyInstance) {
     if (body.quoteMemoryId) {
       const [qm] = await db.select({ userId: memories.userId }).from(memories).where(eq(memories.id, body.quoteMemoryId));
       if (qm) await createNotification({ userId: qm.userId, actorId: userId, type: 'quote', postId: id, memoryId: body.quoteMemoryId });
+    }
+    if (body.quoteProjectId) {
+      const [qpr] = await db.select({ userId: projects.userId }).from(projects).where(eq(projects.id, body.quoteProjectId));
+      if (qpr) await createNotification({ userId: qpr.userId, actorId: userId, type: 'quote', postId: id, projectId: body.quoteProjectId });
     }
 
     await notifyMentions(body.content, userId, { postId: id });

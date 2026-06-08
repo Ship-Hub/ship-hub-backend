@@ -20,6 +20,7 @@ async function attachQuotedItems<T extends { post: typeof posts.$inferSelect; [k
   return Promise.all(rows.map(async (row) => {
     let quotedPost = null;
     let quotedMemory = null;
+    let quotedProject = null;
 
     if (row.post.quotePostId) {
       const [qp] = await db
@@ -45,7 +46,19 @@ async function attachQuotedItems<T extends { post: typeof posts.$inferSelect; [k
       quotedMemory = qm ?? null;
     }
 
-    return { ...row, quotedPost, quotedMemory };
+    if (row.post.quoteProjectId) {
+      const [qpr] = await db
+        .select({
+          project: projects,
+          author: { id: users.id, username: users.username, displayName: users.displayName, avatar: users.avatar },
+        })
+        .from(projects)
+        .leftJoin(users, eq(projects.userId, users.id))
+        .where(eq(projects.id, row.post.quoteProjectId));
+      quotedProject = qpr ?? null;
+    }
+
+    return { ...row, quotedPost, quotedMemory, quotedProject };
   }));
 }
 

@@ -12,6 +12,7 @@ export const posts = mysqlTable('posts', {
   // quote
   quotePostId: varchar('quote_post_id', { length: 36 }),
   quoteMemoryId: varchar('quote_memory_id', { length: 36 }),
+  quoteProjectId: varchar('quote_project_id', { length: 36 }),
   // code snippet
   language: varchar('language', { length: 50 }),
   // build update

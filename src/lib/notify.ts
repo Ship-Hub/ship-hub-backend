@@ -42,7 +42,7 @@ export async function createNotification(payload: NotifPayload) {
 }
 
 // Parse @mentions from content, create notifications for each mentioned user
-export async function notifyMentions(content: string, actorId: string, context: { postId?: string; memoryId?: string; commentId?: string }) {
+export async function notifyMentions(content: string, actorId: string, context: { postId?: string; memoryId?: string; projectId?: string; commentId?: string }) {
   try {
     const matches = [...new Set(content.match(/@([a-zA-Z0-9_-]+)/g) ?? [])];
     for (const match of matches) {

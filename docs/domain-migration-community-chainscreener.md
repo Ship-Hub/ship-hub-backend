@@ -18,28 +18,31 @@ Recommended cutover model:
 
 ## Implementation Status
 
-Implemented on 2026-06-08:
+Finalized on 2026-06-08:
 
 - Backend commit `0f12080` pushed to GitHub and deployed.
 - Frontend commit `afdb640` pushed to GitHub and deployed.
+- Old-domain redirect finalized in production Nginx: `community.memobank.online` now returns `301` to `community.chainscreener.site` with the original path preserved.
+- ShipHub backend `CORS_ORIGIN` now allows only `https://community.chainscreener.site`.
+- Memo Bank API `SHIPHUB_REDIRECT_URI` now allows only `https://community.chainscreener.site/auth/callback/memobank`.
+- `shiphub-api` and `memo-bank-api` were restarted with updated env and saved in PM2.
+
+Earlier overlap implementation:
+
 - `community.chainscreener.site` now serves ShipHub over HTTPS.
 - Let's Encrypt certificate issued for `community.chainscreener.site`.
 - ShipHub backend production env now uses the new domain for `FRONTEND_URL`, `SHIPHUB_REDIRECT_URI`, and `MEMOBANK_REDIRECT_URI`.
-- ShipHub backend `CORS_ORIGIN` allows both domains during overlap:
-  - `https://community.memobank.online`
-  - `https://community.chainscreener.site`
-- Memo Bank API `SHIPHUB_REDIRECT_URI` allows both OAuth callbacks during overlap.
 - Frontend static metadata and per-page `VITE_APP_URL` fallbacks now use `https://community.chainscreener.site`.
-- Old domain remains live for now; it has not yet been redirected.
 
 Verified:
 
+- `https://community.memobank.online/health` returns `301` with `Location: https://community.chainscreener.site/health`.
 - `https://community.chainscreener.site/health` returns ShipHub health OK.
 - `https://community.chainscreener.site/v1/feed?type=all` returns feed data.
 - `https://community.chainscreener.site/` serves the ShipHub frontend with new-domain OG metadata.
 - `https://community.chainscreener.site/v1/auth/memobank/url` returns a Memo Bank authorize URL using the new callback.
 - Memo Bank OAuth authorize endpoint accepts the new callback.
-- CORS allows both old and new origins.
+- CORS allows the new domain.
 - `https://community.chainscreener.site/v1/chat/channels` returns community chat channels.
 - `nginx -t` passes.
 - `shiphub-api` and `memo-bank-api` are online in PM2.

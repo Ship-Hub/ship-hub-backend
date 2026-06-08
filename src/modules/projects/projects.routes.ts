@@ -1,9 +1,10 @@
 import type { FastifyInstance } from 'fastify';
 import { db } from '../../db/index.js';
-import { projects, projectMemories, projectFollows, memories, users } from '../../db/schema/index.js';
+import { projects, projectMemories, projectFollows, projectLikes, projectComments, memories, users } from '../../db/schema/index.js';
 import { eq, desc, and, sql } from 'drizzle-orm';
 import { authenticate } from '../../lib/middleware.js';
 import { AppError } from '../../lib/errors.js';
+import { createNotification, notifyMentions } from '../../lib/notify.js';
 import { randomUUID } from 'crypto';
 import { z } from 'zod';
 
@@ -150,6 +151,83 @@ export async function projectsRoutes(app: FastifyInstance) {
     await db.insert(projectFollows).values({ userId, projectId });
     await db.update(projects).set({ followerCount: sql`follower_count + 1` }).where(eq(projects.id, projectId));
     return reply.send({ following: true });
+  });
+
+  // Like/unlike project
+  app.post('/projects/:id/like', { preHandler: [authenticate] }, async (req, reply) => {
+    const { id: userId } = req.user as { id: string };
+    const { id: projectId } = req.params as { id: string };
+    const [project] = await db.select({ userId: projects.userId }).from(projects).where(eq(projects.id, projectId));
+    if (!project) throw new AppError(404, 'NOT_FOUND', 'Project not found');
+
+    const [existing] = await db
+      .select()
+      .from(projectLikes)
+      .where(and(eq(projectLikes.userId, userId), eq(projectLikes.projectId, projectId)));
+
+    if (existing) {
+      await db.delete(projectLikes).where(and(eq(projectLikes.userId, userId), eq(projectLikes.projectId, projectId)));
+      await db.update(projects).set({ likeCount: sql`GREATEST(like_count - 1, 0)` }).where(eq(projects.id, projectId));
+      return reply.send({ liked: false });
+    }
+
+    await db.insert(projectLikes).values({ userId, projectId });
+    await db.update(projects).set({ likeCount: sql`like_count + 1` }).where(eq(projects.id, projectId));
+    await createNotification({ userId: project.userId, actorId: userId, type: 'like', projectId });
+    return reply.send({ liked: true });
+  });
+
+  // Get project comments
+  app.get('/projects/:id/comments', async (req, reply) => {
+    const { id: projectId } = req.params as { id: string };
+    const rows = await db
+      .select({
+        comment: projectComments,
+        author: { id: users.id, username: users.username, displayName: users.displayName, avatar: users.avatar },
+      })
+      .from(projectComments)
+      .leftJoin(users, eq(projectComments.userId, users.id))
+      .where(eq(projectComments.projectId, projectId))
+      .orderBy(desc(projectComments.createdAt));
+    return reply.send({ comments: rows });
+  });
+
+  // Post project comment
+  app.post('/projects/:id/comments', { preHandler: [authenticate] }, async (req, reply) => {
+    const { id: userId } = req.user as { id: string };
+    const { id: projectId } = req.params as { id: string };
+    const { content } = z.object({ content: z.string().min(1).max(2000) }).parse(req.body);
+    const [project] = await db.select({ userId: projects.userId }).from(projects).where(eq(projects.id, projectId));
+    if (!project) throw new AppError(404, 'NOT_FOUND', 'Project not found');
+
+    const id = randomUUID();
+    await db.insert(projectComments).values({ id, projectId, userId, content });
+    await db.update(projects).set({ commentCount: sql`comment_count + 1` }).where(eq(projects.id, projectId));
+    await createNotification({ userId: project.userId, actorId: userId, type: 'comment', projectId, commentId: id });
+    await notifyMentions(content, userId, { projectId, commentId: id });
+
+    const [created] = await db
+      .select({
+        comment: projectComments,
+        author: { id: users.id, username: users.username, displayName: users.displayName, avatar: users.avatar },
+      })
+      .from(projectComments)
+      .leftJoin(users, eq(projectComments.userId, users.id))
+      .where(eq(projectComments.id, id));
+
+    return reply.status(201).send(created);
+  });
+
+  // Delete project comment
+  app.delete('/projects/comments/:id', { preHandler: [authenticate] }, async (req, reply) => {
+    const { id: userId } = req.user as { id: string };
+    const { id } = req.params as { id: string };
+    const [comment] = await db.select().from(projectComments).where(eq(projectComments.id, id));
+    if (!comment) throw new AppError(404, 'NOT_FOUND', 'Comment not found');
+    if (comment.userId !== userId) throw new AppError(403, 'FORBIDDEN', 'Not your comment');
+    await db.delete(projectComments).where(eq(projectComments.id, id));
+    await db.update(projects).set({ commentCount: sql`GREATEST(comment_count - 1, 0)` }).where(eq(projects.id, comment.projectId));
+    return reply.status(204).send();
   });
 
   // Check follow status
